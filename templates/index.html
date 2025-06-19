@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Chat Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .message-bubble {
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .loading-dots {
+            animation: loading 1.5s infinite;
+        }
+        @keyframes loading {
+            0%, 80%, 100% { opacity: 0; }
+            40% { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-white mb-2">🤖 Agent Chat Simulator</h1>
+            <p class="text-white/80 text-lg">Choose two agents and watch them interact!</p>
+        </header>
+
+        <!-- Agent Selection Section -->
+        <div id="agentSelection" class="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 mb-8">
+            <h2 class="text-2xl font-semibold text-white mb-6">Choose Your Agents</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Agent 1 Selection -->
+                <div>
+                    <label class="block text-white font-medium mb-3">Agent 1</label>
+                    <select id="agent1Select" class="w-full p-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+                        <option value="">Select an agent...</option>
+                        {% for agent in agents %}
+                        <option value="{{ agent.id }}" data-name="{{ agent.name }}" data-personality="{{ agent.personality }}">
+                            {{ agent.name }} - {{ agent.personality }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Agent 2 Selection -->
+                <div>
+                    <label class="block text-white font-medium mb-3">Agent 2</label>
+                    <select id="agent2Select" class="w-full p-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-ring-purple-500">
+                        <option value="">Select an agent...</option>
+                        {% for agent in agents %}
+                        <option value="{{ agent.id }}" data-name="{{ agent.name }}" data-personality="{{ agent.personality }}">
+                            {{ agent.name }} - {{ agent.personality }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Temperature Control -->
+            <div class="mt-6">
+                <label class="block text-white font-medium mb-2">Creativity Level</label>
+                <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.7" class="w-full">
+                <div class="text-white/70 text-sm mt-1">
+                    <span id="tempLabel">Balanced</span> (0 = Conservative, 1 = Creative)
+                </div>
+            </div>
+
+            <!-- Start Button -->
+            <button id="startBtn" class="mt-6 w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 px-6 rounded-xl font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-50">
+                Start Conversation
+            </button>
+        </div>
+
+        <!-- Chat Interface -->
+        <div id="chatInterface" class="hidden bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+            <!-- Scenario Display -->
+            <div id="scenarioDisplay" class="mb-6 p-4 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/30 rounded-xl">
+                <h3 class="text-lg font-semibold text-yellow-200 mb-2">Current Scenario</h3>
+                <div id="scenarioText" class="text-white/90"></div>
+                <div class="mt-3 text-sm text-yellow-300">
+                    Scene <span id="currentScene">1</span> of <span id="totalScenes">8</span>
+                </div>
+            </div>
+
+            <!-- Messages Area -->
+            <div id="messagesArea" class="h-96 overflow-y-auto space-y-4 mb-6 p-4 bg-white/5 rounded-xl">
+                <div class="text-center text-white/70">
+                    <div class="text-4xl mb-2">💬</div>
+                    <p>Select agents and start a conversation!</p>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="flex space-x-4">
+                <button id="continueBtn" class="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white py-3 px-6 rounded-xl font-semibold hover:from-green-600 hover:to-emerald-600 transition-all duration-200">
+                    Continue Conversation
+                </button>
+                <button id="nextSceneBtn" class="flex-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white py-3 px-6 rounded-xl font-semibold hover:from-blue-600 hover:to-cyan-600 transition-all duration-200">
+                    Next Scene
+                </button>
+                <button id="summarizeBtn" class="flex-1 bg-gradient-to-r from-pink-500 to-purple-500 text-white py-3 px-6 rounded-xl font-semibold hover:from-pink-600 hover:to-purple-600 transition-all duration-200">
+                    Summarize
+                </button>
+                <button id="resetBtn" class="flex-1 bg-gradient-to-r from-red-500 to-pink-500 text-white py-3 px-6 rounded-xl font-semibold hover:from-red-600 hover:to-pink-600 transition-all duration-200">
+                    Reset
+                </button>
+            </div>
+        </div>
+
+        <!-- Summary Modal -->
+        <div id="summaryModal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div class="bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 max-w-4xl w-full max-h-[80vh] overflow-y-auto">
+                <div class="p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-2xl font-bold text-white">Conversation Analysis</h2>
+                        <button onclick="closeSummaryModal()" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors">
+                            <span class="text-white text-xl">×</span>
+                        </button>
+                    </div>
+                    <div id="summaryContent" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Summary content will be inserted here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentConversation = null;
+        let messages = [];
+        let currentScene = 0;
+        let totalScenes = 8;
+        let agent1Summary = '';
+        let agent2Summary = '';
+
+        // Temperature control
+        document.getElementById('temperature').addEventListener('input', function(e) {
+            const temp = parseFloat(e.target.value);
+            const label = document.getElementById('tempLabel');
+            if (temp === 0) label.textContent = 'Conservative';
+            else if (temp === 1) label.textContent = 'Creative';
+            else label.textContent = 'Balanced';
+        });
+
+        // Start conversation
+        document.getElementById('startBtn').addEventListener('click', async function() {
+            const agent1Id = document.getElementById('agent1Select').value;
+            const agent2Id = document.getElementById('agent2Select').value;
+            const temperature = parseFloat(document.getElementById('temperature').value);
+
+            if (!agent1Id || !agent2Id) {
+                alert('Please select both agents');
+                return;
+            }
+
+            if (agent1Id === agent2Id) {
+                alert('Please select different agents');
+                return;
+            }
+
+            this.disabled = true;
+            this.textContent = 'Starting...';
+
+            try {
+                const response = await axios.post('/api/start-conversation', {
+                    agent1_id: agent1Id,
+                    agent2_id: agent2Id,
+                    temperature: temperature
+                });
+
+                currentConversation = response.data;
+                currentScene = 0;
+                totalScenes = response.data.total_scenes;
+                messages = [{
+                    id: 1,
+                    text: response.data.starter,
+                    sender: response.data.agent1_name,
+                    timestamp: new Date().toISOString()
+                }];
+
+                // Update UI
+                document.getElementById('agentSelection').classList.add('hidden');
+                document.getElementById('chatInterface').classList.remove('hidden');
+                document.getElementById('scenarioText').textContent = response.data.scenario;
+                document.getElementById('currentScene').textContent = currentScene + 1;
+                document.getElementById('totalScenes').textContent = totalScenes;
+                
+                displayMessages();
+            } catch (error) {
+                console.error('Error starting conversation:', error);
+                alert('Error starting conversation: ' + error.response?.data?.error || error.message);
+            } finally {
+                this.disabled = false;
+                this.textContent = 'Start Conversation';
+            }
+        });
+
+        // Continue conversation
+        document.getElementById('continueBtn').addEventListener('click', async function() {
+            if (!currentConversation || messages.length === 0) return;
+
+            this.disabled = true;
+            this.textContent = 'Thinking...';
+
+            try {
+                const lastMessage = messages[messages.length - 1];
+                const response = await axios.post('/api/continue-conversation', {
+                    conversation_id: currentConversation.conversation_id,
+                    agent1_id: currentConversation.agent1_id,
+                    agent2_id: currentConversation.agent2_id,
+                    message: lastMessage.text,
+                    remaining_turns: 5,
+                    current_scene: currentScene,
+                    agent1_summary: agent1Summary,
+                    agent2_summary: agent2Summary
+                });
+
+                const newMessage = {
+                    id: messages.length + 1,
+                    text: response.data.response,
+                    sender: response.data.agent_name,
+                    timestamp: new Date().toISOString()
+                };
+
+                messages.push(newMessage);
+                displayMessages();
+            } catch (error) {
+                console.error('Error continuing conversation:', error);
+                alert('Error continuing conversation: ' + error.response?.data?.error || error.message);
+            } finally {
+                this.disabled = false;
+                this.textContent = 'Continue Conversation';
+            }
+        });
+
+        // Next scene
+        document.getElementById('nextSceneBtn').addEventListener('click', async function() {
+            if (!currentConversation || currentScene >= totalScenes - 1) return;
+
+            this.disabled = true;
+            this.textContent = 'Loading...';
+
+            try {
+                const response = await axios.post('/api/next-scene', {
+                    scene_number: currentScene + 1,
+                    agent1_id: currentConversation.agent1_id,
+                    agent2_id: currentConversation.agent2_id,
+                    agent1_summary: agent1Summary,
+                    agent2_summary: agent2Summary
+                });
+
+                currentScene++;
+                currentConversation.scenario = response.data.scenario;
+                messages = [];
+
+                document.getElementById('scenarioText').textContent = response.data.scenario;
+                document.getElementById('currentScene').textContent = currentScene + 1;
+                displayMessages();
+            } catch (error) {
+                console.error('Error getting next scene:', error);
+                alert('Error getting next scene: ' + error.response?.data?.error || error.message);
+            } finally {
+                this.disabled = false;
+                this.textContent = 'Next Scene';
+            }
+        });
+
+        // Summarize
+        document.getElementById('summarizeBtn').addEventListener('click', async function() {
+            if (!currentConversation) return;
+
+            this.disabled = true;
+            this.textContent = 'Analyzing...';
+
+            try {
+                const response = await axios.post('/api/summarize', {
+                    conversation_id: currentConversation.conversation_id,
+                    agent1_id: currentConversation.agent1_id,
+                    agent2_id: currentConversation.agent2_id
+                });
+
+                agent1Summary = response.data.agent1_summary;
+                agent2Summary = response.data.agent2_summary;
+
+                showSummaryModal(response.data);
+            } catch (error) {
+                console.error('Error generating summary:', error);
+                alert('Error generating summary: ' + error.response?.data?.error || error.message);
+            } finally {
+                this.disabled = false;
+                this.textContent = 'Summarize';
+            }
+        });
+
+        // Reset
+        document.getElementById('resetBtn').addEventListener('click', function() {
+            currentConversation = null;
+            messages = [];
+            currentScene = 0;
+            agent1Summary = '';
+            agent2Summary = '';
+
+            document.getElementById('agentSelection').classList.remove('hidden');
+            document.getElementById('chatInterface').classList.add('hidden');
+            document.getElementById('agent1Select').value = '';
+            document.getElementById('agent2Select').value = '';
+        });
+
+        function displayMessages() {
+            const messagesArea = document.getElementById('messagesArea');
+            
+            if (messages.length === 0) {
+                messagesArea.innerHTML = `
+                    <div class="text-center text-white/70">
+                        <div class="text-4xl mb-2">💬</div>
+                        <p>No messages yet</p>
+                    </div>
+                `;
+                return;
+            }
+
+            messagesArea.innerHTML = messages.map(message => `
+                <div class="message-bubble flex ${message.sender === currentConversation.agent1_name ? 'justify-start' : 'justify-end'}">
+                    <div class="max-w-[80%] p-4 rounded-2xl ${
+                        message.sender === currentConversation.agent1_name
+                            ? 'bg-gradient-to-r from-pink-500/20 to-purple-500/20 border border-pink-500/30 text-white'
+                            : 'bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-500/30 text-white'
+                    }">
+                        <div class="font-semibold mb-2 text-sm opacity-80">${message.sender}</div>
+                        <div class="whitespace-pre-wrap leading-relaxed">${message.text}</div>
+                        <div class="text-xs opacity-60 mt-2">${new Date(message.timestamp).toLocaleTimeString()}</div>
+                    </div>
+                </div>
+            `).join('');
+
+            messagesArea.scrollTop = messagesArea.scrollHeight;
+        }
+
+        function showSummaryModal(data) {
+            const modal = document.getElementById('summaryModal');
+            const content = document.getElementById('summaryContent');
+
+            content.innerHTML = `
+                <div class="bg-gradient-to-br from-pink-500/20 to-purple-500/20 border border-pink-500/30 rounded-xl p-6">
+                    <h3 class="text-xl font-semibold text-pink-200 mb-4">${data.agent1_name}'s Perspective</h3>
+                    <div class="text-white/90 whitespace-pre-wrap leading-relaxed">${data.agent1_summary}</div>
+                </div>
+                <div class="bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-500/30 rounded-xl p-6">
+                    <h3 class="text-xl font-semibold text-blue-200 mb-4">${data.agent2_name}'s Perspective</h3>
+                    <div class="text-white/90 whitespace-pre-wrap leading-relaxed">${data.agent2_summary}</div>
+                </div>
+            `;
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeSummaryModal() {
+            document.getElementById('summaryModal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
